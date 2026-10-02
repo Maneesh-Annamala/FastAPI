@@ -1,0 +1,27 @@
+[project]
+name = "project-blogs"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Maneesh-Annamala", email = "maneeshannamala@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "aiosqlite>=0.22.1",
+    "fastapi[standard]>=0.141.1",
+    "greenlet>=3.5.5",
+    "pwdlib[argon2]>=0.3.1",
+    "pydantic-settings>=2.15.0",
+    "pyjwt>=2.15.1",
+    "sqlalchemy>=2.0.52",
+    "starlette>=1.6.0",
+    "uvicorn[standard]>=0.52.4",
+]
+
+[project.scripts]
+project-blogs = "project_blogs:main"
+
+[build-system]
+requires = ["uv_build>=0.12.9,<0.13.0"]
+build-backend = "uv_build"

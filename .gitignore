@@ -1,0 +1,40 @@
+# Python cache and generated files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+wheels/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+
+# SQLite Database
+*.db
+*.sqlite
+*.sqlite3
+blogs.db
+
+# User Uploaded Media files (keep folder structure)
+media/*
+!media/.gitkeep
+
+# IDE and Editor settings
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Operating System files
+.DS_Store
+Thumbs.db
