@@ -38,3 +38,6 @@ media/*
 # Operating System files
 .DS_Store
 Thumbs.db
+
+# Files
+image_utils_explanation.py
