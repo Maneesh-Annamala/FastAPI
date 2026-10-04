@@ -10,4 +10,6 @@ class Settings(BaseSettings):
 
     max_upload_size_bytes : int = 5 * 1024 * 1024 # 2MB
 
+    max_posts_per_user : int = 10   
+
 settings = Settings()

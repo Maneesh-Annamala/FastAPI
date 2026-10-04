@@ -19,12 +19,16 @@ A full-stack asynchronous Blog application built with **FastAPI**, **SQLAlchemy 
   - Unique UUID-based filename generation & secure storage under `/media/profile_pics`.
   - Automatic cleanup & deletion of previous avatar files when updated or removed.
   - Fallback default avatar system via model property (`image_path`).
+- **📄 Posts & User Posts Pagination**:
+  - **Paginated API Endpoints**: `/api/posts` and `/api/users/{user_id}/posts` support `skip` and `limit` query parameters, returning a `PaginatedPostsResponse` schema (`total`, `skip`, `limit`, `has_more`, `posts`).
+  - **Interactive "Load More" Feed**: Client-side async pagination on Home and User Posts pages via JavaScript Fetch API and dynamic DOM injection.
+  - **Database Efficiency**: Optimized count and slice queries using SQLAlchemy `func.count()`, `offset()`, and `limit()`.
 - **📝 Post & User Management**:
   - Relational Database Models with `Users` and `Posts` mapped via SQLAlchemy ORM.
   - Eager loading with `selectinload` for optimized N+1 query prevention.
 - **🎨 Hybrid Layout (Web UI + REST API)**:
   - **Jinja2 Templates**: Dynamic server-side rendering for `Home`, `Login`, `Register`, `Account`, `Post detail`, and `User Posts` pages.
-  - **Interactive Client Features**: Live image preview, AJAX multipart profile upload, and dynamic UI authentication state updates.
+  - **Interactive Client Features**: Live image preview, AJAX multipart profile upload, dynamic UI authentication state updates, and async load-more feeds.
   - **API Endpoints**: Modularized router architecture under `/routers`.
 - **🛠️ Smart Exception Handling**:
   - Dual response system handling errors gracefully: returning JSON for `/api` requests and custom styled HTML (`error.html`) for browser requests.
@@ -55,16 +59,16 @@ project_blogs/
 ├── media/
 │   └── profile_pics/      # User-uploaded & processed profile avatars
 ├── routers/
-│   ├── posts.py           # API routes for blog post operations
-│   └── users.py           # API routes for authentication, user profile & picture uploads
+│   ├── posts.py           # API routes for blog post operations with pagination
+│   └── users.py           # API routes for authentication, user profiles & paginated user posts
 ├── static/                # CSS, JS, icons, default avatar images
-├── templates/             # Jinja2 HTML templates (layout, home, login, account, etc.)
+├── templates/             # Jinja2 HTML templates (layout, home, login, user_posts, etc.)
 ├── auth.py                # Password hashing & JWT token verification helpers
 ├── database.py            # Async engine setup & session dependency injection
 ├── image_utils.py         # Pillow image cropping, resizing, optimization & deletion utils
 ├── main.py                # App entrypoint, lifespan manager, Jinja rendering & error handlers
 ├── models.py              # SQLAlchemy ORM models (Users, Posts with image_path property)
-├── schemas.py             # Pydantic schemas for request/response validation
+├── schemas.py             # Pydantic schemas (PostResponse, PaginatedPostsResponse, etc.)
 ├── .env.example           # Template for environment configuration
 ├── .gitignore             # Ignored files (secrets, venv, sqlite DB)
 ├── pyproject.toml         # Dependency definitions managed by uv
@@ -116,6 +120,7 @@ project_blogs/
 | :---: | :---: | :--- |
 | **Day 1** | Initial Commit | Set up FastAPI application structure, async SQLAlchemy database engine (`aiosqlite`), ORM models (`Users`, `Posts`), JWT authentication with Argon2 hashing, modular routers, Jinja2 template rendering, and error handlers. |
 | **Day 2** | Profile Picture Feature | Integrated **Pillow (PIL)** for avatar upload processing (300x300 cropping, EXIF rotation, optimization), UUID file management, media mounting, dynamic frontend previews, and user picture upload/delete endpoints. |
+| **Day 3** | Posts & User Posts Pagination | Added offset & limit pagination to `/api/posts` and `/api/users/{user_id}/posts` with `PaginatedPostsResponse` schema, total post counting via `func.count()`, and interactive "Load More Posts" AJAX feeds on Home and User Posts pages. |
 
 ---
 

@@ -41,3 +41,5 @@ Thumbs.db
 
 # Files
 image_utils_explanation.py
+populates_db.py
+populate_images/

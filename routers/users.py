@@ -3,7 +3,7 @@
 # from fastapi.exception_handlers import http_exception_handler,request_validation_exception_handler
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import APIRouter,HTTPException,status,Depends,UploadFile
+from fastapi import APIRouter,HTTPException,status,Depends,UploadFile,Query
 from schemas import *
 from models import *
 from database import get_db
@@ -87,8 +87,10 @@ async def get_users(db: db_dependency, current_user : current_user):
 async def get_current_user(current_user : current_user):
     return current_user
 
-@router.get("/{user_id}/posts", response_model=list[PostResponse])
-async def get_user_posts(user_id : int, db: db_dependency):
+@router.get("/{user_id}/posts", response_model=PaginatedPostsResponse)
+async def get_user_posts(user_id : int, db: db_dependency,
+                         skip : Annotated[int, Query(ge=0)] = 0, 
+                         limit: Annotated[int, Query(ge=1,le=100)] = 10):
     result = await db.execute(select(Users).where(Users.id == user_id))
     user = result.scalars().first()
     if not user:
@@ -96,20 +98,19 @@ async def get_user_posts(user_id : int, db: db_dependency):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
         )
+
+    count_result = await db.execute(select(func.count()).select_from(Posts).where(Posts.user_id == user.id))
+    total = count_result.scalar() or 0  
     result = await db.execute(select(Posts).options(selectinload(Posts.author))
                               .where(Posts.user_id == user.id)
                               .order_by(Posts.date_posted.desc())
+                              .offset(skip)
+                              .limit(limit)
                               )
     posts = result.scalars().all()
-    return posts
+    return PaginatedPostsResponse(posts=[PostResponse.model_validate(post) for post in posts], 
+                                  total=total, skip=skip, limit=limit, has_more=(skip + len(posts)) < total)
 
-@router.get("/{user_id}", response_model=UserPublic)
-async def get_user(user_id: int, db: db_dependency):
-    result = await db.execute(select(Users).where(Users.id == user_id))
-    user = result.scalars().first()
-    if user:
-        return user
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
 @router.patch("/{user_id}", response_model=UserPrivate)
 async def update_user(

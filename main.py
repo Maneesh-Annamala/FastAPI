@@ -12,10 +12,12 @@ from starlette.exceptions import HTTPException as StarletteExceptions
 from fastapi.exceptions import RequestValidationError
 from models import *
 from database import get_db,engine
-from sqlalchemy import select
+from sqlalchemy import select,func
 from typing import Annotated
 from routers.users import router as users_router
 from routers.posts import router as posts_router
+
+from core.config import settings
 
 
 @asynccontextmanager
@@ -41,15 +43,21 @@ app.include_router(posts_router)
 db_dependency = Annotated[AsyncSession, Depends(get_db)]
 
 
-@app.get("/", include_in_schema=False)
-@app.get("/posts", include_in_schema=False)
+@app.get("/", include_in_schema=False,name="home")
+@app.get("/posts", include_in_schema=False,name="posts")
 async def home(request: Request, db: db_dependency):
-    result = await db.execute(select(Posts).options(selectinload(Posts.author)).order_by(Posts.date_posted.desc()))
+    count_result = await db.execute(select(func.count()).select_from(Posts))    
+    total = count_result.scalar() or 0
+
+    result = await db.execute(select(Posts).options(selectinload(Posts.author)).order_by(Posts.date_posted.desc()).limit(settings.max_posts_per_user))
     posts = result.scalars().all()
+
+    has_more = len(posts) < total
+
     return template.TemplateResponse(
         request = request,
         name="home.html",
-        context = {"posts": posts, "title": "Home"}
+        context = {"posts": posts, "title": "Home", "has_more": has_more, "limit": settings.max_posts_per_user, "total": total},
     )
 
 @app.get("/posts/{post_id}", include_in_schema=False)
@@ -65,7 +73,7 @@ async def post_page(request: Request, post_id: int, db: db_dependency):
         )
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
 
-@app.get("/users/{user_id}/posts", include_in_schema=False)
+@app.get("/users/{user_id}/posts", include_in_schema=False,name="user_posts")
 async def user_posts_page(
     request: Request,
     user_id: int,
@@ -79,15 +87,21 @@ async def user_posts_page(
             detail="User not found",
         )
 
+    count_result = await db.execute(select(func.count()).select_from(Posts).where(Posts.user_id == user.id))
+    total = count_result.scalar() or 0
+
     result = await db.execute(select(Posts).options(selectinload(Posts.author))
                               .where(Posts.user_id == user_id)
-                              .order_by(Posts.date_posted.desc()))
+                              .order_by(Posts.date_posted.desc())
+                              .limit(settings.max_posts_per_user))
     posts = result.scalars().all()
+
+    has_more = len(posts) < total
     return template.TemplateResponse(
         request = request,
         name = "user_posts.html",
-        context = {"posts": posts, "user": user, "title": f"{user.username}'s Posts"},
-    )
+        context = {"posts": posts, "user": user, "title": f"{user.username}'s Posts", 
+                   "has_more": has_more, "total": total, "limit": settings.max_posts_per_user},)
 
 
 ## login and register template_routes
@@ -146,7 +160,9 @@ async def validation_exception_handler(request: Request, exception: RequestValid
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
     )
 
-print(status.HTTP_422_UNPROCESSABLE_CONTENT)
+
+
+
 
 
 
