@@ -55,5 +55,20 @@ class PaginatedPostsResponse(BaseModel):
     skip: int
     limit: int
     has_more: bool
+ 
+class ForgetPasswordRequest(BaseModel):
+    """this is for entering email after clicking forget password link in the login page"""
+    email: EmailStr = Field(max_length=120)
+
+
+class ResetPasswordRequest(BaseModel):
+    """this is for entering the new password and the reset token after clicking the reset password link in the email"""
+    token: str = Field(min_length=1)
+    new_password: str = Field(min_length=8, max_length=200)
+
+class ChangePasswordRequest(BaseModel):
+    """this is for changing the password when the user knows the current password and wants to change it to a new one"""
+    current_password: str = Field(min_length=8, max_length=200)
+    new_password: str = Field(min_length=8, max_length=200)
 
     

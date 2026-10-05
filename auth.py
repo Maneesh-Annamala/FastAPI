@@ -11,6 +11,9 @@ from database import get_db
 from models import Users
 from sqlalchemy import select
 
+import hashlib
+import secrets
+
 
 
 
@@ -24,6 +27,14 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, hashed_password: str) -> bool:
     return password_hash.verify(password, hashed_password)
 
+def generate_reset_token() -> str:
+    """Generate a secure random token of size 32 for password reset."""
+    return secrets.token_urlsafe(32)
+
+def hash_reset_token(token: str) -> str:
+    """Hash the reset token using SHA-256."""
+    return hashlib.sha256(token.encode()).hexdigest()
+  
 # create_access_token
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     """Create a JWT access token."""

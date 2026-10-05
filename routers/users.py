@@ -3,16 +3,20 @@
 # from fastapi.exception_handlers import http_exception_handler,request_validation_exception_handler
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import APIRouter,HTTPException,status,Depends,UploadFile,Query
+from fastapi import APIRouter,HTTPException,status,Depends,UploadFile,Query,BackgroundTasks
 from schemas import *
 from models import *
 from database import get_db
-from sqlalchemy import select
+from sqlalchemy import select,delete as sqlalchemy_delete
 
 from typing import Annotated
+from email_utils import send_password_reset_email
 
-from auth import hash_password,verify_password,create_access_token,verify_access_token,oauth2_scheme,current_user
-from datetime import timedelta
+from auth import (hash_password,verify_password,
+                  create_access_token,verify_access_token,
+                  oauth2_scheme,current_user,generate_reset_token,
+                  hash_reset_token)
+from datetime import timedelta,UTC,datetime
 from sqlalchemy import func,select
 from fastapi.security import OAuth2PasswordRequestForm
 from core.config import settings
@@ -36,9 +40,11 @@ async def create_user(user : UserCreate, db : db_dependency):
     if existing_user or existing_email:
         raise HTTPException(status_code=status.HTTP_405_METHOD_NOT_ALLOWED,detail="User already exist")
     password = hash_password(user.password)
-    new_user = Users(username=user.username,
-                    email=user.email.lower(),
-                    password=password)
+    new_user = Users(
+        username=user.username,
+        email=user.email.lower(),
+        password=password
+    )
     db.add(new_user)
     await db.commit()
     await db.refresh(new_user,attribute_names=["posts"])
@@ -86,6 +92,115 @@ async def get_users(db: db_dependency, current_user : current_user):
 @router.get("/current_user", response_model=UserPrivate)
 async def get_current_user(current_user : current_user):
     return current_user
+
+@router.post("/forgot-password", status_code=status.HTTP_202_ACCEPTED)
+async def forgot_password(
+    request_data: ForgetPasswordRequest,
+    background_tasks: BackgroundTasks,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    result = await db.execute(
+        select(Users).where(
+            func.lower(Users.email) == request_data.email.lower(),
+        ),
+    )
+    user = result.scalars().first()
+
+    if user:
+        await db.execute(
+            sqlalchemy_delete(PasswordResetToken).where(
+                PasswordResetToken.user_id == user.id,
+            ),
+        )
+
+        token = generate_reset_token()
+        token_hash = hash_reset_token(token)
+        expires_at = datetime.now(UTC) + timedelta(
+            minutes=settings.reset_token_expire_minutes
+        )
+
+        reset_token = PasswordResetToken(
+            user_id=user.id,
+            token_hash=token_hash,
+            expires_at=expires_at,
+        )
+        db.add(reset_token)
+        await db.commit()
+
+        background_tasks.add_task(
+            send_password_reset_email,
+            to_email=user.email,
+            username=user.username,
+            token=token,
+        )
+
+    return {
+        "message": "If an account exists with this email, you will receive password reset instructions."
+    }
+
+@router.post("/reset-password", status_code=status.HTTP_200_OK)
+async def reset_password(request_data: ResetPasswordRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],):
+
+    token_hash = hash_reset_token(request_data.token)
+
+    result = await db.execute(select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash,))
+    reset_token = result.scalars().first()
+
+    if not reset_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+
+    if reset_token.expires_at.replace(tzinfo=UTC) < datetime.now(UTC):
+        await db.delete(reset_token)
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+
+    result = await db.execute(
+        select(Users).where(Users.id == reset_token.user_id),
+    )
+    user = result.scalars().first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+
+    user.password_hash = hash_password(request_data.new_password)
+
+    await db.execute(sqlalchemy_delete(PasswordResetToken)
+                     .where(PasswordResetToken.user_id == user.id,),)
+
+    await db.commit()
+    return {
+        "message": "Password reset successfully. You can now log in with your new password."
+    }
+
+
+@router.patch("/me/password", status_code=status.HTTP_200_OK)
+async def change_password(
+    password_data: ChangePasswordRequest,
+    current_user: current_user,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    if not verify_password(password_data.current_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+
+    current_user.password_hash = hash_password(password_data.new_password)
+
+    await db.execute(sqlalchemy_delete(PasswordResetToken)
+                     .where(PasswordResetToken.user_id == current_user.id,),)
+    await db.commit()
+    return {"message": "Password changed successfully"}
 
 @router.get("/{user_id}/posts", response_model=PaginatedPostsResponse)
 async def get_user_posts(user_id : int, db: db_dependency,
