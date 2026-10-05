@@ -1,6 +1,6 @@
 # 🚀 FastAPI Blog Application — Daily Learning Project
 
-A full-stack asynchronous Blog application built with **FastAPI**, **SQLAlchemy 2.0 (Async)**, **Pydantic v2**, **Jinja2 Templates**, **Pillow (Image Processing)**, and **JWT Authentication**. 
+A full-stack asynchronous Blog application built with **FastAPI**, **SQLAlchemy 2.0 (Async)**, **Pydantic v2**, **Jinja2 Templates**, **Pillow (Image Processing)**, **aiosmtplib (Email System)**, and **JWT Authentication**. 
 
 > 📌 **Learning Journey**: This repository records my daily progress as I learn and master FastAPI, moving from fundamental concepts to advanced asynchronous patterns, clean architecture, and full-stack web development.
 
@@ -13,6 +13,14 @@ A full-stack asynchronous Blog application built with **FastAPI**, **SQLAlchemy 
   - JWT Access Token generation & verification using `PyJWT`.
   - Secure password hashing using **Argon2** via `pwdlib`.
   - OAuth2 Password Bearer flow for API authentication.
+- **🔑 Password Reset & Email Integration**:
+  - Secure token generation via `secrets.token_urlsafe(32)` with SHA-256 token hashing stored in `PasswordResetToken` table model.
+  - Asynchronous SMTP email dispatching powered by **`aiosmtplib`** integrated with FastAPI `BackgroundTasks`.
+  - Responsive Jinja2 HTML email template (`templates/email/password_reset.html`) with customizable reset URLs and automatic 30-minute token expiration.
+  - Comprehensive API Endpoints:
+    - `POST /api/users/forgot-password`: Generates reset token and triggers async email delivery (with generic anti-enumeration response).
+    - `POST /api/users/reset-password`: Validates token, hashes new password, and invalidates used reset token.
+    - `PATCH /api/users/me/password`: Authenticated password change endpoint with immediate reset token cleanup.
 - **🖼️ Profile Picture Upload & Processing**:
   - **Pillow (PIL)** integration for background thread image manipulation (`run_in_threadpool`).
   - Automatic EXIF orientation correction, square crop & resize to 300x300, RGB mode conversion, and JPEG compression optimization.
@@ -24,7 +32,7 @@ A full-stack asynchronous Blog application built with **FastAPI**, **SQLAlchemy 
   - **Interactive "Load More" Feed**: Client-side async pagination on Home and User Posts pages via JavaScript Fetch API and dynamic DOM injection.
   - **Database Efficiency**: Optimized count and slice queries using SQLAlchemy `func.count()`, `offset()`, and `limit()`.
 - **📝 Post & User Management**:
-  - Relational Database Models with `Users` and `Posts` mapped via SQLAlchemy ORM.
+  - Relational Database Models with `Users`, `Posts`, and `PasswordResetToken` mapped via SQLAlchemy ORM.
   - Eager loading with `selectinload` for optimized N+1 query prevention.
 - **🎨 Hybrid Layout (Web UI + REST API)**:
   - **Jinja2 Templates**: Dynamic server-side rendering for `Home`, `Login`, `Register`, `Account`, `Post detail`, and `User Posts` pages.
@@ -43,7 +51,8 @@ A full-stack asynchronous Blog application built with **FastAPI**, **SQLAlchemy 
 | **Language** | Python 3.13+ |
 | **Database & ORM** | SQLite + `aiosqlite` with [SQLAlchemy 2.0](https://www.sqlalchemy.org/) |
 | **Validation & Settings** | [Pydantic v2](https://docs.pydantic.dev/) & `pydantic-settings` |
-| **Auth & Security** | `PyJWT`, `pwdlib` (Argon2) |
+| **Auth & Security** | `PyJWT`, `pwdlib` (Argon2), `hashlib`, `secrets` |
+| **Email & Async SMTP** | `aiosmtplib`, Jinja2 HTML Templates |
 | **Image Processing** | [Pillow (PIL)](https://python-pillow.org/) |
 | **Templating** | Jinja2 Templates + HTML/CSS Static Files |
 | **Package Manager** | [`uv`](https://github.com/astral-sh/uv) |
@@ -55,21 +64,24 @@ A full-stack asynchronous Blog application built with **FastAPI**, **SQLAlchemy 
 ```text
 project_blogs/
 ├── core/
-│   └── config.py          # Environment settings using pydantic-settings
+│   └── config.py          # Environment settings using pydantic-settings (SecretStr, SMTP configs)
 ├── media/
 │   └── profile_pics/      # User-uploaded & processed profile avatars
 ├── routers/
 │   ├── posts.py           # API routes for blog post operations with pagination
-│   └── users.py           # API routes for authentication, user profiles & paginated user posts
+│   └── users.py           # API routes for auth, password reset, user profiles & paginated user posts
 ├── static/                # CSS, JS, icons, default avatar images
 ├── templates/             # Jinja2 HTML templates (layout, home, login, user_posts, etc.)
-├── auth.py                # Password hashing & JWT token verification helpers
+│   └── email/
+│       └── password_reset.html # Responsive HTML email template for password reset
+├── auth.py                # Password hashing, JWT access token & SHA-256 reset token utilities
 ├── database.py            # Async engine setup & session dependency injection
+├── email_utils.py         # Async SMTP email dispatching via aiosmtplib & Jinja2 rendering
 ├── image_utils.py         # Pillow image cropping, resizing, optimization & deletion utils
 ├── main.py                # App entrypoint, lifespan manager, Jinja rendering & error handlers
-├── models.py              # SQLAlchemy ORM models (Users, Posts with image_path property)
-├── schemas.py             # Pydantic schemas (PostResponse, PaginatedPostsResponse, etc.)
-├── .env.example           # Template for environment configuration
+├── models.py              # SQLAlchemy ORM models (Users, Posts, PasswordResetToken)
+├── schemas.py             # Pydantic schemas (UserCreate, ForgetPasswordRequest, ResetPasswordRequest, etc.)
+├── .env.example           # Template for environment configuration including SMTP settings
 ├── .gitignore             # Ignored files (secrets, venv, sqlite DB)
 ├── pyproject.toml         # Dependency definitions managed by uv
 └── uv.lock                # Lockfile for reproducible builds
@@ -101,7 +113,7 @@ project_blogs/
    ```bash
    cp .env.example .env
    ```
-   *(Optionally generate a custom `SECRET_KEY` in `.env`)*
+   *(Configure your custom `SECRET_KEY` and optional SMTP email credentials like `MAIL_SERVER`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` in `.env`)*
 
 4. **Run the FastAPI Development Server**:
    ```bash
@@ -121,10 +133,10 @@ project_blogs/
 | **Day 1** | Initial Commit | Set up FastAPI application structure, async SQLAlchemy database engine (`aiosqlite`), ORM models (`Users`, `Posts`), JWT authentication with Argon2 hashing, modular routers, Jinja2 template rendering, and error handlers. |
 | **Day 2** | Profile Picture Feature | Integrated **Pillow (PIL)** for avatar upload processing (300x300 cropping, EXIF rotation, optimization), UUID file management, media mounting, dynamic frontend previews, and user picture upload/delete endpoints. |
 | **Day 3** | Posts & User Posts Pagination | Added offset & limit pagination to `/api/posts` and `/api/users/{user_id}/posts` with `PaginatedPostsResponse` schema, total post counting via `func.count()`, and interactive "Load More Posts" AJAX feeds on Home and User Posts pages. |
+| **Day 4** | Password Reset & Email Integration | Built asynchronous backend password reset flow (`/forgot-password`, `/reset-password`, `/me/password`), `PasswordResetToken` table model with SHA-256 token hashing, `aiosmtplib` async SMTP background email delivery, and HTML email templates. |
 
 ---
 
 ## 🛡️ License
 
 This project is open-source and available under the [MIT License](LICENSE).
-
