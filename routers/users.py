@@ -172,7 +172,7 @@ async def reset_password(request_data: ResetPasswordRequest,
             detail="Invalid or expired reset token",
         )
 
-    user.password_hash = hash_password(request_data.new_password)
+    user.password = hash_password(request_data.new_password)
 
     await db.execute(sqlalchemy_delete(PasswordResetToken)
                      .where(PasswordResetToken.user_id == user.id,),)
@@ -189,13 +189,13 @@ async def change_password(
     current_user: current_user,
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    if not verify_password(password_data.current_password, current_user.password_hash):
+    if not verify_password(password_data.current_password, current_user.password):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Current password is incorrect",
         )
 
-    current_user.password_hash = hash_password(password_data.new_password)
+    current_user.password = hash_password(password_data.new_password)
 
     await db.execute(sqlalchemy_delete(PasswordResetToken)
                      .where(PasswordResetToken.user_id == current_user.id,),)
