@@ -1,36 +1,50 @@
 from __future__ import annotations
 
-from datetime import UTC,datetime
-from sqlalchemy import DateTime,Integer,ForeignKey,String,Text
-from sqlalchemy.orm import Mapped,mapped_column,relationship
+from datetime import UTC, datetime
 
 from database import Base
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 
 class Users(Base):
     __tablename__ = "users"
 
-    id : Mapped[int] = mapped_column(Integer,primary_key=True,index=True)
-    username : Mapped[str] = mapped_column(String(100),nullable=False)
-    email : Mapped[str] = mapped_column(String(120),unique=True,nullable=False)
-    password : Mapped[str] = mapped_column(String(200),nullable=False)
-    image_file : Mapped[str] = mapped_column(String(200),nullable=True,default=None)
-    posts : Mapped[list[Posts]] = relationship(back_populates="author",cascade="all, delete-orphan",)
-    reset_tokens: Mapped[list[PasswordResetToken]] = relationship(back_populates="user",cascade="all, delete-orphan",)
-    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    username: Mapped[str] = mapped_column(String(100), nullable=False)
+    email: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    password: Mapped[str] = mapped_column(String(200), nullable=False)
+    image_file: Mapped[str] = mapped_column(String(200), nullable=True, default=None)
+    posts: Mapped[list[Posts]] = relationship(
+        back_populates="author",
+        cascade="all, delete-orphan",
+    )
+    reset_tokens: Mapped[list[PasswordResetToken]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
     @property
     def image_path(self) -> str:
         if self.image_file:
             return f"/media/profile_pics/{self.image_file}"
-        return "/static/profile_pics/default1.jpg" 
+        return "/static/profile_pics/default1.jpg"
+
 
 class Posts(Base):
     __tablename__ = "posts"
-    id : Mapped[int] = mapped_column(Integer,primary_key=True,index=True)
-    title : Mapped[str] = mapped_column(String(100),nullable=False)
-    content : Mapped[str] = mapped_column(Text,nullable=False)
-    user_id : Mapped[int] = mapped_column(ForeignKey("users.id"),nullable=False,index=True)
-    date_posted : Mapped[datetime] = mapped_column(DateTime(timezone=True),default= lambda : datetime.now(UTC))
-    author : Mapped[Users] = relationship(back_populates="posts")
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    title: Mapped[str] = mapped_column(String(100), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    likes: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), nullable=False, index=True
+    )
+    date_posted: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    author: Mapped[Users] = relationship(back_populates="posts")
+
 
 class PasswordResetToken(Base):
     __tablename__ = "password_reset_tokens"

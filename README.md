@@ -1,6 +1,6 @@
 # 🚀 FastAPI Blog Application — Daily Learning Project
 
-A full-stack asynchronous Blog application built with **FastAPI**, **SQLAlchemy 2.0 (Async)**, **Pydantic v2**, **Jinja2 Templates**, **Pillow (Image Processing)**, **aiosmtplib (Email System)**, and **JWT Authentication**. 
+A full-stack asynchronous Blog application built with **FastAPI**, **SQLAlchemy 2.0 (Async)**, **PostgreSQL (`asyncpg`)**, **Alembic (Database Migrations)**, **Pydantic v2**, **Jinja2 Templates**, **Pillow (Image Processing)**, **aiosmtplib (Email System)**, and **JWT Authentication**. 
 
 > 📌 **Learning Journey**: This repository records my daily progress as I learn and master FastAPI, moving from fundamental concepts to advanced asynchronous patterns, clean architecture, and full-stack web development.
 
@@ -8,7 +8,11 @@ A full-stack asynchronous Blog application built with **FastAPI**, **SQLAlchemy 
 
 ## ✨ Features Built So Far
 
-- **⚡ Asynchronous Database Architecture**: Fully async database interactions using **SQLAlchemy 2.0**, `aiosqlite`, and FastAPI `lifespan` context manager.
+- **⚡ Asynchronous Database Architecture**: Fully async database interactions powered by **PostgreSQL**, `asyncpg`, **SQLAlchemy 2.0**, and FastAPI `lifespan` context manager.
+- **🔄 Database Schema Migrations (Alembic)**: 
+  - Version-controlled schema migrations with **Alembic**.
+  - Async migration execution configured in `alembic/env.py` loading database credentials dynamically from Pydantic `Settings`.
+  - Auto-generation of migration scripts (`alembic revision --autogenerate`) for seamless schema evolution and rollbacks (`alembic upgrade / downgrade`).
 - **🔐 Secure Authentication & Authorization**:
   - JWT Access Token generation & verification using `PyJWT`.
   - Secure password hashing using **Argon2** via `pwdlib`.
@@ -49,7 +53,9 @@ A full-stack asynchronous Blog application built with **FastAPI**, **SQLAlchemy 
 | :--- | :--- |
 | **Backend Framework** | [FastAPI](https://fastapi.tiangolo.com/) |
 | **Language** | Python 3.13+ |
-| **Database & ORM** | SQLite + `aiosqlite` with [SQLAlchemy 2.0](https://www.sqlalchemy.org/) |
+| **Database** | [PostgreSQL](https://www.postgresql.org/) |
+| **Async DB Driver & ORM** | `asyncpg` + [SQLAlchemy 2.0](https://www.sqlalchemy.org/) |
+| **Database Migrations** | [Alembic](https://alembic.sqlalchemy.org/) |
 | **Validation & Settings** | [Pydantic v2](https://docs.pydantic.dev/) & `pydantic-settings` |
 | **Auth & Security** | `PyJWT`, `pwdlib` (Argon2), `hashlib`, `secrets` |
 | **Email & Async SMTP** | `aiosmtplib`, Jinja2 HTML Templates |
@@ -63,8 +69,12 @@ A full-stack asynchronous Blog application built with **FastAPI**, **SQLAlchemy 
 
 ```text
 project_blogs/
+├── alembic/
+│   ├── versions/          # Database revision scripts (schema migrations)
+│   ├── env.py             # Alembic migration environment (async config & SQLAlchemy metadata)
+│   └── script.py.mako     # Migration template script
 ├── core/
-│   └── config.py          # Environment settings using pydantic-settings (SecretStr, SMTP configs)
+│   └── config.py          # Environment settings using pydantic-settings (DATABASE_URL, SecretStr, SMTP)
 ├── media/
 │   └── profile_pics/      # User-uploaded & processed profile avatars
 ├── routers/
@@ -74,15 +84,17 @@ project_blogs/
 ├── templates/             # Jinja2 HTML templates (layout, home, login, user_posts, etc.)
 │   └── email/
 │       └── password_reset.html # Responsive HTML email template for password reset
+├── alembic.ini            # Alembic configuration settings
 ├── auth.py                # Password hashing, JWT access token & SHA-256 reset token utilities
-├── database.py            # Async engine setup & session dependency injection
+├── database.py            # Async PostgreSQL engine setup & session dependency injection
 ├── email_utils.py         # Async SMTP email dispatching via aiosmtplib & Jinja2 rendering
 ├── image_utils.py         # Pillow image cropping, resizing, optimization & deletion utils
 ├── main.py                # App entrypoint, lifespan manager, Jinja rendering & error handlers
 ├── models.py              # SQLAlchemy ORM models (Users, Posts, PasswordResetToken)
+├── populates_db.py        # Database seed script for test users, posts, and profile images
 ├── schemas.py             # Pydantic schemas (UserCreate, ForgetPasswordRequest, ResetPasswordRequest, etc.)
-├── .env.example           # Template for environment configuration including SMTP settings
-├── .gitignore             # Ignored files (secrets, venv, sqlite DB)
+├── .env.example           # Template for environment configuration including PostgreSQL DATABASE_URL
+├── .gitignore             # Ignored files (secrets, venv, media cache)
 ├── pyproject.toml         # Dependency definitions managed by uv
 └── uv.lock                # Lockfile for reproducible builds
 ```
@@ -93,7 +105,8 @@ project_blogs/
 
 ### Prerequisites
 - **Python 3.13+**
-- **uv** package manager installed (Recommended: `pip install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`)
+- **PostgreSQL Database** running locally or remotely
+- **uv** package manager installed (`pip install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`)
 
 ### Installation & Local Setup
 
@@ -113,16 +126,49 @@ project_blogs/
    ```bash
    cp .env.example .env
    ```
-   *(Configure your custom `SECRET_KEY` and optional SMTP email credentials like `MAIL_SERVER`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` in `.env`)*
+   *(Set your PostgreSQL connection string `DATABASE_URL` in `.env`, e.g., `postgresql+asyncpg://user:password@localhost:5432/blog_db`, along with your `SECRET_KEY` and SMTP email settings)*
 
-4. **Run the FastAPI Development Server**:
+4. **Run Database Migrations with Alembic**:
+   Apply all schema migrations to create database tables in PostgreSQL:
+   ```bash
+   uv run alembic upgrade head
+   ```
+
+5. **(Optional) Populate Sample Seed Data**:
+   Populate the database with initial users, blog posts, and avatars:
+   ```bash
+   uv run python populates_db.py
+   ```
+
+6. **Run the FastAPI Development Server**:
    ```bash
    uv run uvicorn main:app --reload
    ```
 
-5. **Access the Application**:
+7. **Access the Application**:
    - 🌐 **Web Interface**: `http://127.0.0.1:8000/`
    - 📚 **Swagger Interactive API Docs**: `http://127.0.0.1:8000/docs`
+
+---
+
+## 🔄 Useful Alembic Migration Commands
+
+- **Create a new migration after updating SQLAlchemy models**:
+  ```bash
+  uv run alembic revision --autogenerate -m "description of changes"
+  ```
+- **Apply pending migrations**:
+  ```bash
+  uv run alembic upgrade head
+  ```
+- **Roll back the last migration**:
+  ```bash
+  uv run alembic downgrade -1
+  ```
+- **Check current migration status**:
+  ```bash
+  uv run alembic current
+  ```
 
 ---
 
@@ -134,6 +180,7 @@ project_blogs/
 | **Day 2** | Profile Picture Feature | Integrated **Pillow (PIL)** for avatar upload processing (300x300 cropping, EXIF rotation, optimization), UUID file management, media mounting, dynamic frontend previews, and user picture upload/delete endpoints. |
 | **Day 3** | Posts & User Posts Pagination | Added offset & limit pagination to `/api/posts` and `/api/users/{user_id}/posts` with `PaginatedPostsResponse` schema, total post counting via `func.count()`, and interactive "Load More Posts" AJAX feeds on Home and User Posts pages. |
 | **Day 4** | Password Reset & Email Integration | Built asynchronous backend password reset flow (`/forgot-password`, `/reset-password`, `/me/password`), `PasswordResetToken` table model with SHA-256 token hashing, `aiosmtplib` async SMTP background email delivery, and HTML email templates. |
+| **Day 5** | PostgreSQL & Alembic Migrations | Upgraded database architecture from SQLite to **PostgreSQL** (`postgresql+asyncpg`). Integrated **Alembic** schema migrations with async database connection support (`alembic/env.py`). Created baseline schema migration and initial schema updates (`likes` column on `posts`). |
 
 ---
 

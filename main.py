@@ -1,40 +1,37 @@
 from contextlib import asynccontextmanager
-
-from fastapi.exception_handlers import http_exception_handler,request_validation_exception_handler
-
-from sqlalchemy.orm import selectinload
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from fastapi import FastAPI,Request,HTTPException,status,Depends
-from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
-from starlette.exceptions import HTTPException as StarletteExceptions
-from fastapi.exceptions import RequestValidationError
-from models import *
-from database import get_db,engine
-from sqlalchemy import select,func
 from typing import Annotated
-from routers.users import router as users_router
-from routers.posts import router as posts_router
 
 from core.config import settings
+from database import engine, get_db
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.exception_handlers import (
+    http_exception_handler,
+    request_validation_exception_handler,
+)
+from fastapi.exceptions import RequestValidationError
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from models import *
+from routers.posts import router as posts_router
+from routers.users import router as users_router
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from starlette.exceptions import HTTPException as StarletteExceptions
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    #startup code
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
     yield
-    #shutdown code
+    # shutdown code
     await engine.dispose()
+
 
 app = FastAPI(lifespan=lifespan)
 
 
-
 template = Jinja2Templates(directory="templates")
-app.mount("/static",StaticFiles(directory="static"),name="static")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/media", StaticFiles(directory="media"), name="media")
 
 app.include_router(users_router)
@@ -43,37 +40,52 @@ app.include_router(posts_router)
 db_dependency = Annotated[AsyncSession, Depends(get_db)]
 
 
-@app.get("/", include_in_schema=False,name="home")
-@app.get("/posts", include_in_schema=False,name="posts")
+@app.get("/", include_in_schema=False, name="home")
+@app.get("/posts", include_in_schema=False, name="posts")
 async def home(request: Request, db: db_dependency):
-    count_result = await db.execute(select(func.count()).select_from(Posts))    
+    count_result = await db.execute(select(func.count()).select_from(Posts))
     total = count_result.scalar() or 0
 
-    result = await db.execute(select(Posts).options(selectinload(Posts.author)).order_by(Posts.date_posted.desc()).limit(settings.max_posts_per_user))
+    result = await db.execute(
+        select(Posts)
+        .options(selectinload(Posts.author))
+        .order_by(Posts.date_posted.desc())
+        .limit(settings.max_posts_per_user)
+    )
     posts = result.scalars().all()
 
     has_more = len(posts) < total
 
     return template.TemplateResponse(
-        request = request,
+        request=request,
         name="home.html",
-        context = {"posts": posts, "title": "Home", "has_more": has_more, "limit": settings.max_posts_per_user, "total": total},
+        context={
+            "posts": posts,
+            "title": "Home",
+            "has_more": has_more,
+            "limit": settings.max_posts_per_user,
+            "total": total,
+        },
     )
+
 
 @app.get("/posts/{post_id}", include_in_schema=False)
 async def post_page(request: Request, post_id: int, db: db_dependency):
-    result = await db.execute(select(Posts).options(selectinload(Posts.author)).where(Posts.id == post_id))
+    result = await db.execute(
+        select(Posts).options(selectinload(Posts.author)).where(Posts.id == post_id)
+    )
     post = result.scalars().first()
     if post:
         title = post.title[:50]
         return template.TemplateResponse(
-            request = request,
-            name = "post.html",
+            request=request,
+            name="post.html",
             context={"post": post, "title": title},
         )
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
 
-@app.get("/users/{user_id}/posts", include_in_schema=False,name="user_posts")
+
+@app.get("/users/{user_id}/posts", include_in_schema=False, name="user_posts")
 async def user_posts_page(
     request: Request,
     user_id: int,
@@ -87,21 +99,33 @@ async def user_posts_page(
             detail="User not found",
         )
 
-    count_result = await db.execute(select(func.count()).select_from(Posts).where(Posts.user_id == user.id))
+    count_result = await db.execute(
+        select(func.count()).select_from(Posts).where(Posts.user_id == user.id)
+    )
     total = count_result.scalar() or 0
 
-    result = await db.execute(select(Posts).options(selectinload(Posts.author))
-                              .where(Posts.user_id == user_id)
-                              .order_by(Posts.date_posted.desc())
-                              .limit(settings.max_posts_per_user))
+    result = await db.execute(
+        select(Posts)
+        .options(selectinload(Posts.author))
+        .where(Posts.user_id == user_id)
+        .order_by(Posts.date_posted.desc())
+        .limit(settings.max_posts_per_user)
+    )
     posts = result.scalars().all()
 
     has_more = len(posts) < total
     return template.TemplateResponse(
-        request = request,
-        name = "user_posts.html",
-        context = {"posts": posts, "user": user, "title": f"{user.username}'s Posts", 
-                   "has_more": has_more, "total": total, "limit": settings.max_posts_per_user},)
+        request=request,
+        name="user_posts.html",
+        context={
+            "posts": posts,
+            "user": user,
+            "title": f"{user.username}'s Posts",
+            "has_more": has_more,
+            "total": total,
+            "limit": settings.max_posts_per_user,
+        },
+    )
 
 
 ## login and register template_routes
@@ -122,6 +146,7 @@ async def register_page(request: Request):
         {"title": "Register"},
     )
 
+
 @app.get("/account", include_in_schema=False)
 async def account_page(request: Request):
     return template.TemplateResponse(
@@ -130,38 +155,55 @@ async def account_page(request: Request):
         {"title": "Account"},
     )
 
+
 @app.get("/forgot-password", include_in_schema=False)
 async def forgot_password_page(request: Request):
-    return template.TemplateResponse(request,"forgot_password.html",{"title": "Forgot Password"})
+    return template.TemplateResponse(
+        request, "forgot_password.html", {"title": "Forgot Password"}
+    )
 
 
 @app.get("/reset-password", include_in_schema=False)
 async def reset_password_page(request: Request):
-    response = template.TemplateResponse(request,"reset_password.html",{"title": "Reset Password"})
+    response = template.TemplateResponse(
+        request, "reset_password.html", {"title": "Reset Password"}
+    )
     response.headers["Referrer-Policy"] = "no-referrer"
     return response
 
-@app.exception_handler(StarletteExceptions)
-async def general_httpexception_handler(request : Request,exe : StarletteExceptions):
-    
-    if request.url.path.startswith("/api"):
-        return await http_exception_handler(request,exe)
 
-    message = exe.detail if exe.detail else "An error occurred. Please check your request and try again."
-    return template.TemplateResponse(name="error.html",request=request,
-                                    context={
-                                        "status_code" : exe.status_code,
-                                        "title" : exe.status_code,
-                                        "message" : message
-                                        },
-                                        status_code=exe.status_code)
+@app.exception_handler(StarletteExceptions)
+async def general_httpexception_handler(request: Request, exe: StarletteExceptions):
+
+    if request.url.path.startswith("/api"):
+        return await http_exception_handler(request, exe)
+
+    message = (
+        exe.detail
+        if exe.detail
+        else "An error occurred. Please check your request and try again."
+    )
+    return template.TemplateResponse(
+        name="error.html",
+        request=request,
+        context={
+            "status_code": exe.status_code,
+            "title": exe.status_code,
+            "message": message,
+        },
+        status_code=exe.status_code,
+    )
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exception: RequestValidationError):
+async def validation_exception_handler(
+    request: Request, exception: RequestValidationError
+):
     if request.url.path.startswith("/api"):
         return await request_validation_exception_handler(request, exception)
-    return template.TemplateResponse(request=request,name="error.html",
+    return template.TemplateResponse(
+        request=request,
+        name="error.html",
         context={
             "status_code": status.HTTP_422_UNPROCESSABLE_CONTENT,
             "title": status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -169,10 +211,3 @@ async def validation_exception_handler(request: Request, exception: RequestValid
         },
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
     )
-
-
-
-
-
-
-
