@@ -1,6 +1,6 @@
 # 🚀 FastAPI Blog Application — Daily Learning Project
 
-A full-stack asynchronous Blog application built with **FastAPI**, **SQLAlchemy 2.0 (Async)**, **PostgreSQL (`asyncpg`)**, **Alembic (Database Migrations)**, **Pydantic v2**, **Jinja2 Templates**, **Pillow (Image Processing)**, **aiosmtplib (Email System)**, and **JWT Authentication**. 
+A full-stack asynchronous Blog application built with **FastAPI**, **SQLAlchemy 2.0 (Async)**, **PostgreSQL (`asyncpg`)**, **Alembic (Database Migrations)**, **Pydantic v2**, **Jinja2 Templates**, **Pillow (Image Processing)**, **AWS S3 (Cloud Media Storage)**, **aiosmtplib (Email System)**, and **JWT Authentication**. 
 
 > 📌 **Learning Journey**: This repository records my daily progress as I learn and master FastAPI, moving from fundamental concepts to advanced asynchronous patterns, clean architecture, and full-stack web development.
 
@@ -25,12 +25,13 @@ A full-stack asynchronous Blog application built with **FastAPI**, **SQLAlchemy 
     - `POST /api/users/forgot-password`: Generates reset token and triggers async email delivery (with generic anti-enumeration response).
     - `POST /api/users/reset-password`: Validates token, hashes new password, and invalidates used reset token.
     - `PATCH /api/users/me/password`: Authenticated password change endpoint with immediate reset token cleanup.
-- **🖼️ Profile Picture Upload & Processing**:
+- **☁️ Profile Picture Upload & AWS S3 Cloud Storage**:
+  - Cloud media storage powered by **AWS S3** using `boto3`.
   - **Pillow (PIL)** integration for background thread image manipulation (`run_in_threadpool`).
   - Automatic EXIF orientation correction, square crop & resize to 300x300, RGB mode conversion, and JPEG compression optimization.
-  - Unique UUID-based filename generation & secure storage under `/media/profile_pics`.
-  - Automatic cleanup & deletion of previous avatar files when updated or removed.
-  - Fallback default avatar system via model property (`image_path`).
+  - Asynchronous S3 upload (`_upload_to_s3`) and deletion (`_delete_from_s3`) under `profile_pics/{uuid}.jpg` key.
+  - S3 public media URL resolution via `Users.image_path` model property (`https://<bucket>.s3.<region>.amazonaws.com/profile_pics/<filename>`) with fallback to local default avatar.
+  - Included AWS IAM policy (`aws_iam_policy.json`), S3 Bucket policy (`aws_bucket_policy.json`), detailed policy guide (`aws_policies_explanations.txt`), and S3 credential verification script (`check_s3.py`).
 - **📄 Posts & User Posts Pagination**:
   - **Paginated API Endpoints**: `/api/posts` and `/api/users/{user_id}/posts` support `skip` and `limit` query parameters, returning a `PaginatedPostsResponse` schema (`total`, `skip`, `limit`, `has_more`, `posts`).
   - **Interactive "Load More" Feed**: Client-side async pagination on Home and User Posts pages via JavaScript Fetch API and dynamic DOM injection.
@@ -56,6 +57,7 @@ A full-stack asynchronous Blog application built with **FastAPI**, **SQLAlchemy 
 | **Database** | [PostgreSQL](https://www.postgresql.org/) |
 | **Async DB Driver & ORM** | `asyncpg` + [SQLAlchemy 2.0](https://www.sqlalchemy.org/) |
 | **Database Migrations** | [Alembic](https://alembic.sqlalchemy.org/) |
+| **Cloud Storage** | [AWS S3](https://aws.amazon.com/s3/) via `boto3` |
 | **Validation & Settings** | [Pydantic v2](https://docs.pydantic.dev/) & `pydantic-settings` |
 | **Auth & Security** | `PyJWT`, `pwdlib` (Argon2), `hashlib`, `secrets` |
 | **Email & Async SMTP** | `aiosmtplib`, Jinja2 HTML Templates |
@@ -74,26 +76,28 @@ project_blogs/
 │   ├── env.py             # Alembic migration environment (async config & SQLAlchemy metadata)
 │   └── script.py.mako     # Migration template script
 ├── core/
-│   └── config.py          # Environment settings using pydantic-settings (DATABASE_URL, SecretStr, SMTP)
-├── media/
-│   └── profile_pics/      # User-uploaded & processed profile avatars
+│   └── config.py          # Environment settings using pydantic-settings (DATABASE_URL, SecretStr, S3, SMTP)
 ├── routers/
 │   ├── posts.py           # API routes for blog post operations with pagination
-│   └── users.py           # API routes for auth, password reset, user profiles & paginated user posts
+│   └── users.py           # API routes for auth, password reset, profile pictures & paginated user posts
 ├── static/                # CSS, JS, icons, default avatar images
 ├── templates/             # Jinja2 HTML templates (layout, home, login, user_posts, etc.)
 │   └── email/
 │       └── password_reset.html # Responsive HTML email template for password reset
 ├── alembic.ini            # Alembic configuration settings
 ├── auth.py                # Password hashing, JWT access token & SHA-256 reset token utilities
+├── aws_bucket_policy.json # AWS S3 public read bucket policy reference
+├── aws_iam_policy.json   # AWS IAM minimal permission policy for app user
+├── aws_policies_explanations.txt # Detailed explanation for S3 & IAM policy setup
+├── check_s3.py            # Utility script to verify S3 credentials & upload permissions
 ├── database.py            # Async PostgreSQL engine setup & session dependency injection
 ├── email_utils.py         # Async SMTP email dispatching via aiosmtplib & Jinja2 rendering
-├── image_utils.py         # Pillow image cropping, resizing, optimization & deletion utils
+├── image_utils.py         # Pillow image cropping/resizing & AWS S3 upload/delete utilities
 ├── main.py                # App entrypoint, lifespan manager, Jinja rendering & error handlers
 ├── models.py              # SQLAlchemy ORM models (Users, Posts, PasswordResetToken)
 ├── populates_db.py        # Database seed script for test users, posts, and profile images
 ├── schemas.py             # Pydantic schemas (UserCreate, ForgetPasswordRequest, ResetPasswordRequest, etc.)
-├── .env.example           # Template for environment configuration including PostgreSQL DATABASE_URL
+├── .env.example           # Template for environment configuration including S3 & PostgreSQL settings
 ├── .gitignore             # Ignored files (secrets, venv, media cache)
 ├── pyproject.toml         # Dependency definitions managed by uv
 └── uv.lock                # Lockfile for reproducible builds
@@ -106,6 +110,7 @@ project_blogs/
 ### Prerequisites
 - **Python 3.13+**
 - **PostgreSQL Database** running locally or remotely
+- **AWS S3 Bucket** configured for media storage
 - **uv** package manager installed (`pip install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`)
 
 ### Installation & Local Setup
@@ -126,26 +131,38 @@ project_blogs/
    ```bash
    cp .env.example .env
    ```
-   *(Set your PostgreSQL connection string `DATABASE_URL` in `.env`, e.g., `postgresql+asyncpg://user:password@localhost:5432/blog_db`, along with your `SECRET_KEY` and SMTP email settings)*
+   *(Set your PostgreSQL connection string `DATABASE_URL`, `SECRET_KEY`, SMTP email settings, and AWS S3 credentials in `.env`)*:
+   ```env
+   S3_BUCKET_NAME=your-s3-bucket-name
+   S3_REGION=ap-southeast-2
+   S3_ACCESS_KEY_ID=your-access-key-id
+   S3_SECRET_ACCESS_KEY=your-secret-access-key
+   ```
 
-4. **Run Database Migrations with Alembic**:
+4. **Verify AWS S3 Connection**:
+   Run the S3 verification script to confirm bucket upload and delete permissions:
+   ```bash
+   uv run python check_s3.py
+   ```
+
+5. **Run Database Migrations with Alembic**:
    Apply all schema migrations to create database tables in PostgreSQL:
    ```bash
    uv run alembic upgrade head
    ```
 
-5. **(Optional) Populate Sample Seed Data**:
+6. **(Optional) Populate Sample Seed Data**:
    Populate the database with initial users, blog posts, and avatars:
    ```bash
    uv run python populates_db.py
    ```
 
-6. **Run the FastAPI Development Server**:
+7. **Run the FastAPI Development Server**:
    ```bash
    uv run uvicorn main:app --reload
    ```
 
-7. **Access the Application**:
+8. **Access the Application**:
    - 🌐 **Web Interface**: `http://127.0.0.1:8000/`
    - 📚 **Swagger Interactive API Docs**: `http://127.0.0.1:8000/docs`
 
@@ -181,6 +198,7 @@ project_blogs/
 | **Day 3** | Posts & User Posts Pagination | Added offset & limit pagination to `/api/posts` and `/api/users/{user_id}/posts` with `PaginatedPostsResponse` schema, total post counting via `func.count()`, and interactive "Load More Posts" AJAX feeds on Home and User Posts pages. |
 | **Day 4** | Password Reset & Email Integration | Built asynchronous backend password reset flow (`/forgot-password`, `/reset-password`, `/me/password`), `PasswordResetToken` table model with SHA-256 token hashing, `aiosmtplib` async SMTP background email delivery, and HTML email templates. |
 | **Day 5** | PostgreSQL & Alembic Migrations | Upgraded database architecture from SQLite to **PostgreSQL** (`postgresql+asyncpg`). Integrated **Alembic** schema migrations with async database connection support (`alembic/env.py`). Created baseline schema migration and initial schema updates (`likes` column on `posts`). |
+| **Day 6** | AWS S3 Cloud Media Storage | Migrated user profile picture storage from local disk to **AWS S3**. Integrated `boto3` for asynchronous S3 upload (`_upload_to_s3`) and deletion (`_delete_from_s3`), updated `Users.image_path` property to return full S3 URLs, added AWS IAM & Bucket policy files, and created `check_s3.py` connection verification tool. |
 
 ---
 

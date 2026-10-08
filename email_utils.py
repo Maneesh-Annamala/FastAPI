@@ -1,11 +1,14 @@
 from email.message import EmailMessage
 
 import aiosmtplib
+from core.config import settings
+from fastapi.concurrency import run_in_threadpool
 from fastapi.templating import Jinja2Templates
 
-from core.config import settings
+# from startlette.concurrency import run_in_threadpool
 
 templates = Jinja2Templates(directory="templates")
+
 
 ## send_email function
 async def send_email(
@@ -31,6 +34,7 @@ async def send_email(
         password=settings.mail_password.get_secret_value() or None,
         start_tls=settings.mail_use_tls,
     )
+
 
 ## send_password_reset_email function
 async def send_password_reset_email(to_email: str, username: str, token: str) -> None:

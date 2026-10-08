@@ -43,3 +43,6 @@ Thumbs.db
 image_utils_explanation.py
 populates_db.py
 populate_images/
+aws_bucket_policy.json
+aws_iam_policy.json
+aws_policies_explanations.txt

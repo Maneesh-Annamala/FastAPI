@@ -14,6 +14,7 @@ from auth import (
     verify_access_token,
     verify_password,
 )
+from botocore.exceptions import ClientError
 from core.config import settings
 from database import get_db
 from email_utils import send_password_reset_email
@@ -27,7 +28,11 @@ from fastapi import (
     status,
 )
 from fastapi.security import OAuth2PasswordRequestForm
-from image_utils import delete_profile_image, process_profile_image
+from image_utils import (
+    delete_profile_image,
+    process_profile_image,
+    upload_profile_image,
+)
 from models import *
 from PIL import UnidentifiedImageError
 from schemas import *
@@ -333,7 +338,7 @@ async def delete_user(user_id: int, current_user: current_user, db: db_dependenc
     await db.delete(current_user)
     await db.commit()
     if old_filename:
-        delete_profile_image(old_filename)
+        await delete_profile_image(old_filename)
 
 
 # upload profile picture
@@ -357,11 +362,21 @@ async def upload_profile_picture(
         )
 
     try:
-        new_filename = await run_in_threadpool(process_profile_image, content)
+        processed_bytes, new_filename = await run_in_threadpool(
+            process_profile_image, content
+        )
     except UnidentifiedImageError as err:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid image file. Please upload a valid image (JPEG, PNG, GIF, WebP).",
+        ) from err
+
+    try:
+        await upload_profile_image(processed_bytes, new_filename)
+    except ClientError as err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload profile picture",
         ) from err
 
     old_filename = current_user.image_file
@@ -370,7 +385,7 @@ async def upload_profile_picture(
     await db.commit()
     await db.refresh(current_user)
     if old_filename:
-        delete_profile_image(old_filename)
+        await delete_profile_image(old_filename)
     return current_user
 
 
@@ -384,6 +399,7 @@ async def delete_profile_picture(
             detail="Not authorized to delete this user's picture",
         )
     old_filename = current_user.image_file
+
     if old_filename is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -395,5 +411,5 @@ async def delete_profile_picture(
     await db.commit()
     await db.refresh(current_user)
     if old_filename:
-        delete_profile_image(old_filename)
+        await delete_profile_image(old_filename)
     return current_user
