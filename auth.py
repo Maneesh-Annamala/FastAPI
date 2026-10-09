@@ -1,40 +1,41 @@
-from datetime import datetime, timedelta,UTC
-import jwt
-from fastapi.security import OAuth2PasswordBearer
-from pwdlib import PasswordHash
-from core.config import settings
-from typing import Annotated
-
-from fastapi import Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from database import get_db
-from models import Users
-from sqlalchemy import select
-
 import hashlib
 import secrets
+from datetime import UTC, datetime, timedelta
+from typing import Annotated
 
-
-
+import jwt
+from core.config import settings
+from database import get_db
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from models import Users
+from pwdlib import PasswordHash
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 password_hash = PasswordHash.recommended()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/users/token")
 
+
 def hash_password(password: str) -> str:
     return password_hash.hash(password)
 
+
 def verify_password(password: str, hashed_password: str) -> bool:
     return password_hash.verify(password, hashed_password)
+
 
 def generate_reset_token() -> str:
     """Generate a secure random token of size 32 for password reset."""
     return secrets.token_urlsafe(32)
 
+
 def hash_reset_token(token: str) -> str:
     """Hash the reset token using SHA-256."""
     return hashlib.sha256(token.encode()).hexdigest()
-  
+
+
 # create_access_token
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     """Create a JWT access token."""
@@ -52,6 +53,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
         algorithm=settings.algorithm,
     )
     return encoded_jwt
+
 
 ## verify_access_token
 def verify_access_token(token: str) -> str | None:
@@ -90,5 +92,6 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     return user
+
 
 current_user = Annotated[Users, Depends(get_current_user)]
